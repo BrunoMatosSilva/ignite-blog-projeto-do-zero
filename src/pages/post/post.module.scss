@@ -88,7 +88,7 @@
     }
   
     button {
-        color: var(--highlight);
+        color: var(--pink-1000);
         background: transparent;
         border: none;
         font-size: 1rem;
@@ -100,7 +100,7 @@
         transition: all 0.2s;
   
         &:hover {
-            color:var(--pink-1000);
+            filter: brightness(0.6);
         }
     }
   }
