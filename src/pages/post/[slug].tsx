@@ -9,6 +9,7 @@ import Prismic from '@prismicio/client';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { getPrismicClient } from '../../services/prismic';
+import Utteranc from '../../components/Utteranc';
 
 import commonStyles from '../../styles/common.module.scss';
 import styles from './post.module.scss';
@@ -147,6 +148,7 @@ export default function Post({ post, preview }: PostProps): JSX.Element {
               )}
             </div>
           </nav>
+          <Utteranc />
           {preview && (
             <aside>
               <Link href="/api/exit-preview">
@@ -180,29 +182,61 @@ export const getStaticPaths: GetStaticPaths = async () => {
   };
 };
 
-export const getStaticProps: GetStaticProps = async ({ params }) => {
+export const getStaticProps: GetStaticProps = async ({
+  params,
+  preview = false,
+  previewData,
+}) => {
   const { slug } = params;
-
   const prismic = getPrismicClient();
+  const response = await prismic.getByUID('post', String(slug), {
+    ref: previewData?.ref ?? null,
+  });
 
-  const response = await prismic.getByUID('post', String(slug), {});
+  const prevpost = (
+    await prismic.query(Prismic.predicates.at('document.type', 'post'), {
+      fetch: ['post.title'],
+      pageSize: 1,
+      after: response.id,
+      orderings: '[document.first_publication_date]',
+    })
+  ).results[0];
+
+  const nextpost = (
+    await prismic.query(Prismic.predicates.at('document.type', 'post'), {
+      fetch: ['post.title'],
+      pageSize: 1,
+      after: response.id,
+      orderings: '[document.first_publication_date desc]',
+    })
+  ).results[0];
 
   const post = {
     uid: response.uid,
     first_publication_date: response.first_publication_date,
+    last_publication_date: response.last_publication_date,
+    prevSlug: !prevpost ? null : prevpost.uid,
+    prevTitle: !prevpost ? null : prevpost.data.title,
+    nextSlug: !nextpost ? null : nextpost.uid,
+    nextTitle: !nextpost ? null : nextpost.data.title,
     data: {
+      author: response.data.author,
       title: response.data.title,
       subtitle: response.data.subtitle,
-      banner: response.data.banner,
-      author: response.data.author,
-      content: response.data.content,
+      content: response.data.content.map(c => ({
+        heading: c.heading,
+        body: [...c.body],
+      })),
+      banner: {
+        url: response.data.banner.url,
+      },
     },
   };
-
   return {
     props: {
       post,
+      preview,
     },
-    redirect: 60 * 30,
+    redirect: 60 * 30, // 30 minutes
   };
 };
