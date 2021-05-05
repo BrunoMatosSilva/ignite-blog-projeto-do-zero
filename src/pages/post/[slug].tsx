@@ -1,12 +1,27 @@
+import { Fragment } from 'react';
+import Head from 'next/head';
 import { GetStaticPaths, GetStaticProps } from 'next';
+import { format } from 'date-fns';
+import ptBR from 'date-fns/locale/pt-BR';
+import { RichText } from 'prismic-dom';
+import Prismic from '@prismicio/client';
 
+import { useRouter } from 'next/router';
+import Link from 'next/link';
 import { getPrismicClient } from '../../services/prismic';
 
 import commonStyles from '../../styles/common.module.scss';
 import styles from './post.module.scss';
+import { FaCalendar, FaUser, FaClock } from 'react-icons/fa'
+
 
 interface Post {
   first_publication_date: string | null;
+  last_publication_date: string | null;
+  prevSlug: string | null;
+  prevTitle: string | null;
+  nextSlug: string | null;
+  nextTitle: string | null;
   data: {
     title: string;
     banner: {
@@ -24,22 +39,170 @@ interface Post {
 
 interface PostProps {
   post: Post;
+  preview: boolean;
 }
 
-// export default function Post() {
-//   // TODO
-// }
+export default function Post({ post, preview }: PostProps): JSX.Element {
+  const router = useRouter();
 
-// export const getStaticPaths = async () => {
-//   const prismic = getPrismicClient();
-//   const posts = await prismic.query(TODO);
+  const readingTime = Math.ceil(
+    post.data.content.reduce((total, contentItem) => {
+      const heading = String(contentItem.heading).split(' ');
+      const body = RichText.asText(contentItem.body).split(' ');
+      return total + (body.length + heading.length);
+    }, 0) / 200
+  );
 
-//   // TODO
-// };
+  if (router.isFallback) {
+    return <h1>Carregando...</h1>;
+  }
 
-// export const getStaticProps = async context => {
-//   const prismic = getPrismicClient();
-//   const response = await prismic.getByUID(TODO);
+  return (
+    <>
+      <Head>
+        <title>{post.data.title} | Spacetraveling</title>
+      </Head>
+      <div className={styles.banner}>
+        <img src={post.data.banner.url} alt="" />
+      </div>
+      <main className={commonStyles.container}>
+        <article>
+          <header className={styles.headerPost}>
+            <h1>{post.data.title}</h1>
+            <span>
+              <time>
+                <span><FaCalendar /></span>
+                {format(new Date(post.first_publication_date), 'dd MMM yyyy', {
+                  locale: ptBR,
+                })}
+              </time>
+              <span>
+                <span><FaUser /></span>
+                {post.data.author}
+              </span>
+              <span>
+                <span><FaClock /></span>
+                {readingTime} min
+              </span>
+            </span>
+            <span>
+              * editado em{' '}
+              {format(
+                new Date(post.first_publication_date),
+                "d MMM yyyy, 'ás' HH:mm",
+                {
+                  locale: ptBR,
+                }
+              )}
+            </span>
+          </header>
+          <section className={styles.postContent}>
+            {post.data.content.map((c, i) => (
+              <Fragment key={String(i)}>
+                <h1>{c.heading}</h1>
+                <div
+                  // eslint-disable-next-line react/no-danger
+                  dangerouslySetInnerHTML={{ __html: RichText.asHtml(c.body) }}
+                />
+              </Fragment>
+            ))}
+          </section>
+          <hr className={styles.hr} />
+          <nav className={styles.navContainer}>
+            <div>
+              <p>{post.prevTitle}</p>
 
-//   // TODO
-// };
+              {!post.prevSlug ? (
+                ''
+              ) : (
+                <Link href={`/post/${post.prevSlug}`}>
+                  <a>
+                    <button type="button" className={styles.nextPage}>
+                      Post anterior
+                    </button>
+                  </a>
+                </Link>
+              )}
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+              }}
+            >
+              <p>{post.nextTitle}</p>
+
+              {!post.nextSlug ? (
+                ''
+              ) : (
+                <Link href={`/post/${post.nextSlug}`}>
+                  <a>
+                    <button type="button" className={styles.nextPage}>
+                      Próximo post
+                    </button>
+                  </a>
+                </Link>
+              )}
+            </div>
+          </nav>
+          {preview && (
+            <aside>
+              <Link href="/api/exit-preview">
+                <a>Sair do modo Preview</a>
+              </Link>
+            </aside>
+          )}
+        </article>
+      </main>
+    </>
+  );
+}
+
+export const getStaticPaths: GetStaticPaths = async () => {
+  const prismic = getPrismicClient();
+  const posts = await prismic.query(
+    [Prismic.predicates.at('document.type', 'post')],
+    {
+      fetch: ['post.title,post.subtitle,post.author'],
+      pageSize: 3,
+    }
+  );
+  const paths = posts.results.map(post => ({
+    params: {
+      slug: post.uid,
+    },
+  }));
+  return {
+    paths,
+    fallback: true,
+  };
+};
+
+export const getStaticProps: GetStaticProps = async ({ params }) => {
+  const { slug } = params;
+
+  const prismic = getPrismicClient();
+
+  const response = await prismic.getByUID('post', String(slug), {});
+
+  const post = {
+    uid: response.uid,
+    first_publication_date: response.first_publication_date,
+    data: {
+      title: response.data.title,
+      subtitle: response.data.subtitle,
+      banner: response.data.banner,
+      author: response.data.author,
+      content: response.data.content,
+    },
+  };
+
+  return {
+    props: {
+      post,
+    },
+    redirect: 60 * 30,
+  };
+};
